@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: auction-arena-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npx prisma db push
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false

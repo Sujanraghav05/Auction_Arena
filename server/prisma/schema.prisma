@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  ADMIN
+  TEAM
+  VIEWER
+}
+
+enum PlayerStatus {
+  UNSOLD_POOL   // not yet auctioned this season
+  IN_AUCTION    // currently live under the hammer
+  SOLD
+  UNSOLD
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(VIEWER)
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Season {
+  id            String          @id @default(cuid())
+  name          String          // e.g. "Season 1 - 2026"
+  isActive      Boolean         @default(false)
+  purseAmount   Int             @default(10000000) // default purse per team in this season
+  createdAt     DateTime        @default(now())
+  teams         Team[]
+  auctionResults AuctionResult[]
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  shortName   String
+  logoUrl     String?
+  budget      Int      @default(10000000)
+  purseLeft   Int      @default(10000000)
+  seasonId    String
+  season      Season   @relation(fields: [seasonId], references: [id])
+  users       User[]
+  results     AuctionResult[]
+  createdAt   DateTime @default(now())
+}
+
+model Player {
+  id          String   @id @default(cuid())
+  name        String
+  role        String   // Batsman / Bowler / All-rounder / Wicketkeeper
+  battingStyle String?
+  bowlingStyle String?
+  photoUrl    String?
+  basePrice   Int      @default(200000)
+  stats       Json?    // free-form career stats blob
+  status      PlayerStatus @default(UNSOLD_POOL)
+  createdAt   DateTime @default(now())
+  results     AuctionResult[]
+}
+
+// One row per player per season = their auction-rate history
+model AuctionResult {
+  id         String   @id @default(cuid())
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id])
+  seasonId   String
+  season     Season   @relation(fields: [seasonId], references: [id])
+  teamId     String?
+  team       Team?    @relation(fields: [teamId], references: [id])
+  soldPrice  Int?     // null if unsold
+  status     PlayerStatus @default(UNSOLD)
+  createdAt  DateTime @default(now())
+
+  @@unique([playerId, seasonId])
+}
