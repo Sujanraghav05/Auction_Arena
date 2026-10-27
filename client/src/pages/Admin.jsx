@@ -27,6 +27,7 @@ export default function Admin() {
   const [activatingSeasonId, setActivatingSeasonId] = useState(null);
   const [socket, setSocket] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [auctionLive, setAuctionLive] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const previousAuction = useRef(null);
@@ -42,6 +43,7 @@ export default function Admin() {
     });
     s.on("auction:error", setError);
     s.on("auction:update", (auction) => {
+      setAuctionLive(auction.status === "live");
       const previous = previousAuction.current;
       if (previous && previous.status !== "live" && auction.status === "live") {
         setNotice(`Auction started: ${auction.player.name}`);
@@ -50,6 +52,11 @@ export default function Admin() {
         setNotice(`${auction.player?.name || "Player"} marked ${auction.status.toUpperCase()}.`);
       }
       previousAuction.current = auction;
+    });
+    s.on("auction:resetComplete", ({ seasonId, resetCount }) => {
+      setError("");
+      setNotice(`Season reset complete. ${resetCount} sold/unsold player${resetCount === 1 ? "" : "s"} returned to the pool and team purses restored.`);
+      refresh(seasonId);
     });
     return () => {
       s.disconnect();
@@ -254,6 +261,22 @@ export default function Admin() {
     setError("");
     setNotice("");
     socket.emit(outcome === "SOLD" ? "admin:markSold" : "admin:markUnsold");
+  }
+
+  function resetSeasonAuction() {
+    if (!selectedSeasonId || !socket?.connected || auctionLive) {
+      setError(auctionLive ? "Finish the live auction before resetting a season." : "Select a season and connect to the auction server first.");
+      return;
+    }
+    const seasonName = seasons.find((season) => season.id === selectedSeasonId)?.name || "the selected season";
+    const confirmed = window.confirm(
+      `Reset ${seasonName}? This returns all sold and unsold players to the pool, clears their season sale records, and restores every team purse to its budget.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    socket.emit("admin:resetSeason", { seasonId: selectedSeasonId });
   }
 
   return (
@@ -606,6 +629,22 @@ export default function Admin() {
         <p className="text-xs text-slate-500 mt-2">
           Go to the Live Auction page to watch the room while you run it from here.
         </p>
+      </section>
+
+      <section className="rounded-lg border border-red-900/70 bg-red-950/20 p-4">
+        <h2 className="text-lg font-semibold text-red-300">Reset season auction</h2>
+        <p className="mb-3 mt-1 text-sm text-slate-400">
+          Return every sold or unsold player in the selected season to the pool, clear their sale records, and restore team purses.
+        </p>
+        <button
+          type="button"
+          onClick={resetSeasonAuction}
+          disabled={!socketConnected || !selectedSeasonId || auctionLive}
+          className="rounded bg-red-700 px-4 py-2 font-medium hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Reset sold and unsold players
+        </button>
+        {auctionLive && <p className="mt-2 text-xs text-amber-400">Finish the live auction before resetting the season.</p>}
       </section>
     </div>
   );

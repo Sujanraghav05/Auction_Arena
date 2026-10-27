@@ -29,6 +29,7 @@ let ioRef = null;
 let bidInProgress = false;
 let startInProgress = false;
 let finalizationInProgress = false;
+let resetInProgress = false;
 
 class AuctionActionError extends Error {}
 
@@ -75,6 +76,14 @@ export function initSocket(io) {
         await finalizePlayer("UNSOLD");
       })
     );
+
+    socket.on("admin:resetSeason", (payload) =>
+      runSocketAction(socket, async () => {
+        if (!isAdmin(socket)) throw new AuctionActionError("Admin only");
+        const resetCount = await resetSeason(payload?.seasonId);
+        socket.emit("auction:resetComplete", { seasonId: payload.seasonId, resetCount });
+      })
+    );
   });
 }
 
@@ -100,6 +109,7 @@ function isAdmin(socket) {
 }
 
 async function startPlayer(playerId, seasonId) {
+  if (resetInProgress) throw new AuctionActionError("A season reset is in progress. Please try again.");
   if (state.status === "live" || startInProgress) throw new AuctionActionError("Finish the current auction first");
   if (!playerId || !seasonId) throw new AuctionActionError("Player and season are required");
 
@@ -146,6 +156,7 @@ async function startPlayer(playerId, seasonId) {
 }
 
 async function handleBid(socket, amount) {
+  if (resetInProgress) throw new AuctionActionError("A season reset is in progress. Please try again.");
   if (state.status !== "live") throw new AuctionActionError("No live auction right now");
   if (finalizationInProgress) throw new AuctionActionError("Auction result is being saved. Please wait.");
   if (bidInProgress) throw new AuctionActionError("A bid is being processed. Please try again.");
@@ -233,6 +244,7 @@ function clearAuctionTimer() {
 }
 
 async function finalizePlayer(outcome) {
+  if (resetInProgress) throw new AuctionActionError("A season reset is in progress. Please try again.");
   if (state.status !== "live" || !state.playerId) {
     throw new AuctionActionError("There is no live auction to finalize");
   }
@@ -281,6 +293,70 @@ async function finalizePlayer(outcome) {
     broadcast();
   } finally {
     finalizationInProgress = false;
+  }
+}
+
+async function resetSeason(seasonId) {
+  if (!seasonId) throw new AuctionActionError("Select a season to reset");
+  if (state.status === "live" || startInProgress || bidInProgress || finalizationInProgress) {
+    throw new AuctionActionError("Finish the live auction before resetting a season");
+  }
+  if (resetInProgress) throw new AuctionActionError("A season reset is already in progress");
+
+  resetInProgress = true;
+  try {
+    const season = await prisma.season.findUnique({ where: { id: seasonId } });
+    if (!season) throw new AuctionActionError("Season not found");
+
+    const resetCount = await prisma.$transaction(async (tx) => {
+      const results = await tx.auctionResult.findMany({
+        where: { seasonId, status: { in: ["SOLD", "UNSOLD"] } },
+        select: { playerId: true },
+      });
+      const playerIds = results.map(({ playerId }) => playerId);
+
+      await tx.auctionResult.updateMany({
+        where: { seasonId, status: { in: ["SOLD", "UNSOLD"] } },
+        data: { status: "UNSOLD_POOL", teamId: null, soldPrice: null },
+      });
+      if (playerIds.length > 0) {
+        await tx.player.updateMany({
+          where: { id: { in: playerIds } },
+          data: { status: "UNSOLD_POOL" },
+        });
+      }
+
+      const teams = await tx.team.findMany({
+        where: { seasonId },
+        select: { id: true, budget: true },
+      });
+      await Promise.all(teams.map((team) =>
+        tx.team.update({ where: { id: team.id }, data: { purseLeft: team.budget } })
+      ));
+
+      return playerIds.length;
+    });
+
+    if (state.seasonId === seasonId && state.status !== "live") {
+      clearAuctionTimer();
+      state = {
+        ...state,
+        seasonId: null,
+        playerId: null,
+        player: null,
+        currentBid: 0,
+        leadingTeamId: null,
+        leadingTeamName: null,
+        bidHistory: [],
+        timerEndsAt: null,
+        status: "idle",
+      };
+      broadcast();
+    }
+
+    return resetCount;
+  } finally {
+    resetInProgress = false;
   }
 }
 
