@@ -21,8 +21,8 @@ let state = {
   status: "idle", // idle | live | sold | unsold
 };
 
-const TIMER_SECONDS = 60;
-const ANTI_SNIPE_SECONDS = 10; // if a bid lands with < this much time left, reset timer
+const TIMER_SECONDS = 90;
+const ANTI_SNIPE_WINDOW_SECONDS = 10; // extend the timer when a bid lands near expiry
 
 let timerHandle = null;
 let ioRef = null;
@@ -195,8 +195,8 @@ async function handleBid(socket, amount) {
 
     // Anti-snipe: if a bid lands near the end, give other teams time to respond.
     const msLeft = state.timerEndsAt - Date.now();
-    if (msLeft < ANTI_SNIPE_SECONDS * 1000) {
-      state.timerEndsAt = Date.now() + ANTI_SNIPE_SECONDS * 1000;
+    if (msLeft < ANTI_SNIPE_WINDOW_SECONDS * 1000) {
+      state.timerEndsAt = Date.now() + TIMER_SECONDS * 1000;
       armTimer();
     }
 
