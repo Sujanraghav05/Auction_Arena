@@ -13,12 +13,16 @@ export default function Dashboard() {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError("");
     Promise.all([
       api.get("/api/teams/seasons"),
       api.get(`/api/players${seasonId ? `?seasonId=${seasonId}` : ""}`),
     ])
       .then(([seasonResponse, playerResponse]) => {
         if (active) {
+          if (!Array.isArray(seasonResponse.data) || !Array.isArray(playerResponse.data)) {
+            throw new Error("Unexpected response from the backend. Check Cloudflare's VITE_API_URL and redeploy the site.");
+          }
           setSeasons(seasonResponse.data);
           setPlayers(playerResponse.data);
         }
