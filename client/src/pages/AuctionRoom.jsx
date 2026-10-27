@@ -96,6 +96,17 @@ export default function AuctionRoom() {
   }
 
   const canBid = user?.role === "TEAM" && state.status === "live";
+  const playerStats = Object.entries(state.player.stats || {}).filter(([, value]) =>
+    value !== null && value !== undefined && value !== "" &&
+    (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+  );
+  const playerInitials = state.player.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -108,16 +119,47 @@ export default function AuctionRoom() {
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
-        {state.player.photoUrl && (
+        <div className="relative mx-auto mb-4 h-36 w-36 overflow-hidden rounded-full border-2 border-amber-500/60 bg-slate-800">
+          <div
+            aria-hidden="true"
+            className="flex h-full w-full items-center justify-center text-4xl font-bold text-amber-400"
+          >
+            {playerInitials}
+          </div>
+          {state.player.photoUrl && (
           <img
             src={state.player.photoUrl}
             alt={state.player.name}
-            className="w-28 h-28 rounded-full mx-auto mb-4 object-cover"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        )}
+          )}
+        </div>
         <h1 className="text-2xl font-bold">{state.player.name}</h1>
-        <p className="text-slate-400 mb-4">{state.player.role}</p>
-
+        <p className="text-slate-400">{state.player.role}</p>
+        {(state.player.battingStyle || state.player.bowlingStyle) && (
+          <p className="mt-1 text-sm text-slate-400">
+            {[state.player.battingStyle, state.player.bowlingStyle].filter(Boolean).join(" · ")}
+          </p>
+        )}
+        <p className="mb-5 mt-2 text-sm text-slate-500">
+          Base price: ₹{state.player.basePrice.toLocaleString("en-IN")}
+        </p>
+        {playerStats.length > 0 && (
+          <section aria-label="Player career statistics" className="mb-6 text-left">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Player stats</h2>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {playerStats.map(([key, value]) => (
+                <div key={key} className="rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+                  <dt className="text-xs capitalize text-slate-500">{key.replace(/([A-Z])/g, " $1")}</dt>
+                  <dd className="mt-1 font-semibold text-slate-200">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
         <p className="text-4xl font-extrabold text-amber-400 mb-1">
           ₹{state.currentBid.toLocaleString("en-IN")}
         </p>

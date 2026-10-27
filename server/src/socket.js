@@ -21,7 +21,7 @@ let state = {
   status: "idle", // idle | live | sold | unsold
 };
 
-const TIMER_SECONDS = 20;
+const TIMER_SECONDS = 60;
 const ANTI_SNIPE_SECONDS = 10; // if a bid lands with < this much time left, reset timer
 
 let timerHandle = null;
